@@ -1,0 +1,7 @@
+Flask==3.0.0
+flask-cors==4.0.0
+joblib>=1.3.0
+# Note: scikit-learn should be installed separately to avoid compilation issues
+# Run: pip install scikit-learn --only-binary :all:
+# Or use the install_dependencies.bat script
+

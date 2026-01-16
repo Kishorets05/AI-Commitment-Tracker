@@ -1,0 +1,33 @@
+text,hours_left,priority
+Interview call,2,High
+HR interview discussion,3,High
+Exam tomorrow,5,High
+Submit assignment,12,High
+Pay electricity bill,24,High
+Fee payment deadline,18,High
+Project review meeting,6,High
+Client call,4,High
+Placement test,8,High
+Government document submission,20,High
+
+Team meeting,10,Medium
+Prepare slides,14,Medium
+Buy groceries,36,Medium
+Office follow-up mail,30,Medium
+Lab record completion,28,Medium
+Travel booking,40,Medium
+Doctor appointment,26,Medium
+Group discussion practice,22,Medium
+Online course completion,48,Medium
+Library book return,34,Medium
+
+Go out for movie,48,Low
+Watch YouTube,72,Low
+Play games,96,Low
+Scroll Instagram,120,Low
+Watch web series,100,Low
+Hangout with friends,60,Low
+Listen to music,80,Low
+Online shopping browsing,90,Low
+Gaming night,110,Low
+Random personal task,70,Low
