@@ -1,288 +1,349 @@
 """
-Database operations for users and commitments.
+Database operations for users and commitments using MongoDB.
 """
 
-import sqlite3
 import os
 from datetime import datetime
 from typing import List, Dict, Optional
+from pymongo import MongoClient, ASCENDING
+from pymongo.errors import DuplicateKeyError
+from bson.objectid import ObjectId
+from dotenv import load_dotenv
+
+# Load environment variables from .env
+load_dotenv()
+
+
+def parse_deadline(deadline_val) -> Optional[datetime]:
+    """Helper to safely parse deadline values into naive datetime objects."""
+    if not deadline_val:
+        return None
+    if isinstance(deadline_val, datetime):
+        return deadline_val
+    try:
+        return datetime.fromisoformat(deadline_val)
+    except Exception:
+        try:
+            return datetime.strptime(deadline_val, "%Y-%m-%dT%H:%M")
+        except Exception:
+            return None
 
 
 class Database:
-    """Database manager for users and commitments."""
-    
-    def __init__(self, db_path: str = "webapp/database/commitments.db"):
-        """
-        Initialize database manager.
-        
-        Args:
-            db_path: Path to SQLite database file
-        """
-        # Ensure data directory exists
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
-        
-        self.db_path = db_path
-        self._init_db()
-    
-    def _get_connection(self):
-        """Get a new database connection for each operation."""
-        conn = sqlite3.connect(self.db_path, check_same_thread=False)
-        conn.row_factory = sqlite3.Row
-        return conn
-    
-    def _init_db(self):
-        """Initialize database schema."""
-        conn = self._get_connection()
-        try:
-            cursor = conn.cursor()
-            
-            # Users table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS users (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT UNIQUE NOT NULL,
-                    created_at TEXT NOT NULL
-                )
-            """)
-            
-            # Commitments table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS commitments (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    user_id INTEGER NOT NULL,
-                    subject TEXT NOT NULL,
-                    description TEXT,
-                    deadline TEXT,
-                    status TEXT NOT NULL DEFAULT 'Pending',
-                    priority TEXT DEFAULT 'Medium',
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL,
-                    FOREIGN KEY (user_id) REFERENCES users(id)
-                )
-            """)
-            
-            # Add priority column if it doesn't exist (for existing databases)
-            try:
-                cursor.execute("ALTER TABLE commitments ADD COLUMN priority TEXT DEFAULT 'Medium'")
-                conn.commit()
-            except sqlite3.OperationalError:
-                # Column already exists
-                pass
-            
-            conn.commit()
-        finally:
-            conn.close()
-    
-    # User operations
-    def create_user(self, username: str) -> Optional[int]:
-        """Create a new user. Returns user_id if created, None if exists."""
-        conn = self._get_connection()
-        try:
-            cursor = conn.cursor()
-            try:
-                cursor.execute("""
-                    INSERT INTO users (username, created_at)
-                    VALUES (?, ?)
-                """, (username, datetime.now().isoformat()))
-                conn.commit()
-                return cursor.lastrowid
-            except sqlite3.IntegrityError:
-                return None
-        finally:
-            conn.close()
-    
-    def get_user_by_username(self, username: str) -> Optional[Dict]:
-        """Get user by username."""
-        conn = self._get_connection()
-        try:
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
-            row = cursor.fetchone()
-            return dict(row) if row else None
-        finally:
-            conn.close()
-    
-    # Commitment operations
-    def create_commitment(self, user_id: int, subject: str, description: str = "",
-                         deadline: Optional[str] = None, status: str = "Pending",
-                         priority: str = "Medium") -> int:
-        """Create a new commitment."""
-        conn = self._get_connection()
-        try:
-            cursor = conn.cursor()
-            now = datetime.now().isoformat()
-            cursor.execute("""
-                INSERT INTO commitments 
-                (user_id, subject, description, deadline, status, priority, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (user_id, subject, description, deadline, status, priority, now, now))
-            conn.commit()
-            return cursor.lastrowid
-        finally:
-            conn.close()
-    
-    def get_user_commitments(self, user_id: int, status: Optional[str] = None, 
-                           sort_by_priority: Optional[str] = None) -> List[Dict]:
-        """
-        Get commitments for a user.
-        
-        Args:
-            user_id: User ID
-            status: Optional status filter
-            sort_by_priority: 'high_to_low' or 'low_to_high' for priority sorting
-            
-        Returns:
-            List of commitment dictionaries
-        """
-        conn = self._get_connection()
-        try:
-            cursor = conn.cursor()
-            
-            # Build ORDER BY clause based on sort preference
-            if sort_by_priority == 'high_to_low':
-                # High priority first, then Medium, then Low
-                priority_order = """
-                    CASE priority
-                        WHEN 'High' THEN 1
-                        WHEN 'Medium' THEN 2
-                        WHEN 'Low' THEN 3
-                        ELSE 4
-                    END ASC,
-                    CASE 
-                        WHEN deadline IS NULL THEN 1
-                        ELSE 0
-                    END,
-                    deadline ASC
-                """
-            elif sort_by_priority == 'low_to_high':
-                # Low priority first, then Medium, then High
-                priority_order = """
-                    CASE priority
-                        WHEN 'Low' THEN 1
-                        WHEN 'Medium' THEN 2
-                        WHEN 'High' THEN 3
-                        ELSE 4
-                    END ASC,
-                    CASE 
-                        WHEN deadline IS NULL THEN 1
-                        ELSE 0
-                    END,
-                    deadline ASC
-                """
-            else:
-                # Default: by deadline urgency
-                priority_order = """
-                    CASE 
-                        WHEN deadline IS NULL THEN 1
-                        ELSE 0
-                    END,
-                    deadline ASC,
-                    created_at DESC
-                """
-            
-            if status:
-                cursor.execute(f"""
-                    SELECT * FROM commitments
-                    WHERE user_id = ? AND status = ?
-                    ORDER BY {priority_order}
-                """, (user_id, status))
-            else:
-                cursor.execute(f"""
-                    SELECT * FROM commitments
-                    WHERE user_id = ?
-                    ORDER BY {priority_order}
-                """, (user_id,))
-            
-            rows = cursor.fetchall()
-            return [dict(row) for row in rows]
-        finally:
-            conn.close()
-    
-    def get_urgent_commitments(self, user_id: int, limit: int = 5) -> List[Dict]:
-        """Get most urgent commitments (High priority only, nearest deadlines)."""
-        conn = self._get_connection()
-        try:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT * FROM commitments
-                WHERE user_id = ? 
-                AND status = 'Pending'
-                AND priority = 'High'
-                AND deadline IS NOT NULL
-                AND deadline >= datetime('now')
-                ORDER BY deadline ASC
-                LIMIT ?
-            """, (user_id, limit))
-            
-            rows = cursor.fetchall()
-            return [dict(row) for row in rows]
-        finally:
-            conn.close()
-    
-    def update_commitment_status(self, commitment_id: int, user_id: int, status: str) -> bool:
-        """Update commitment status."""
-        conn = self._get_connection()
-        try:
-            cursor = conn.cursor()
-            cursor.execute("""
-                UPDATE commitments 
-                SET status = ?, updated_at = ?
-                WHERE id = ? AND user_id = ?
-            """, (status, datetime.now().isoformat(), commitment_id, user_id))
-            conn.commit()
-            return cursor.rowcount > 0
-        finally:
-            conn.close()
-    
-    def update_commitment(self, commitment_id: int, user_id: int, subject: str = None,
-                         description: str = None, deadline: str = None, status: str = None,
-                         priority: str = None) -> bool:
-        """Update commitment details."""
-        conn = self._get_connection()
-        try:
-            cursor = conn.cursor()
-            updates = []
-            params = []
-            
-            if subject is not None:
-                updates.append("subject = ?")
-                params.append(subject)
-            if description is not None:
-                updates.append("description = ?")
-                params.append(description)
-            if deadline is not None:
-                updates.append("deadline = ?")
-                params.append(deadline)
-            if status is not None:
-                updates.append("status = ?")
-                params.append(status)
-            if priority is not None:
-                updates.append("priority = ?")
-                params.append(priority)
-            
-            if not updates:
-                return False
-            
-            updates.append("updated_at = ?")
-            params.append(datetime.now().isoformat())
-            params.extend([commitment_id, user_id])
-            
-            query = f"UPDATE commitments SET {', '.join(updates)} WHERE id = ? AND user_id = ?"
-            cursor.execute(query, params)
-            conn.commit()
-            return cursor.rowcount > 0
-        finally:
-            conn.close()
-    
-    def delete_commitment(self, commitment_id: int, user_id: int) -> bool:
-        """Delete a commitment."""
-        conn = self._get_connection()
-        try:
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM commitments WHERE id = ? AND user_id = ?", 
-                         (commitment_id, user_id))
-            conn.commit()
-            return cursor.rowcount > 0
-        finally:
-            conn.close()
+    """Database manager for users and commitments using MongoDB."""
 
+    def __init__(self):
+        # Support fallback as requested by configuration instructions
+        self.uri = os.environ.get("MONGODB_URI") or os.environ.get("MONGODB_CONNECTION_STRING")
+        self.db_name = os.environ.get("MONGODB_DB_NAME") or os.environ.get("MONGODB_DATABASE_NAME") or "AI_Commitment_Tracker"
+
+        if not self.uri:
+            # Fallback to local default if not specified
+            self.uri = "mongodb://localhost:27017/"
+
+        self.client = None
+        self.db = None
+        self.users = None
+        self.commitments = None
+        self.connection_error = None
+
+        try:
+            # Connect to MongoDB with timeout
+            self.client = MongoClient(self.uri, serverSelectionTimeoutMS=3000)
+            self.db = self.client[self.db_name]
+            self.users = self.db["users"]
+            self.commitments = self.db["commitments"]
+
+            # Trigger connection check
+            self.client.admin.command('ping')
+
+            # Initialize indexes
+            self._init_indexes()
+        except Exception as e:
+            self.connection_error = str(e)
+            print(f"MongoDB connection error: {e}")
+
+    def _init_indexes(self):
+        """Add sensible indexes for frequently queried fields."""
+        if self.connection_error:
+            return
+        try:
+            # Unique index on username
+            self.users.create_index([("username", ASCENDING)], unique=True)
+
+            # Indexes on commitments
+            self.commitments.create_index([("user_id", ASCENDING)])
+            self.commitments.create_index([("user_id", ASCENDING), ("deadline", ASCENDING)])
+            self.commitments.create_index([("user_id", ASCENDING), ("status", ASCENDING)])
+        except Exception as e:
+            print(f"Failed to create indexes: {e}")
+
+    # --------------------------------------------------
+    # User operations
+    # --------------------------------------------------
+    def create_user(self, username: str, password_hash: str) -> Optional[str]:
+        """Create a new user with username and password hash."""
+        if self.connection_error:
+            return None
+        try:
+            user_doc = {
+                "username": username,
+                "password_hash": password_hash,
+                "created_at": datetime.now().isoformat()
+            }
+            result = self.users.insert_one(user_doc)
+            return str(result.inserted_id)
+        except DuplicateKeyError:
+            print(f"Username '{username}' already exists.")
+            return None
+        except Exception as e:
+            print(f"Error creating user: {e}")
+            return None
+
+    def get_user_by_username(self, username: str) -> Optional[Dict]:
+        """Fetch user by username."""
+        if self.connection_error:
+            return None
+        try:
+            user = self.users.find_one({"username": username})
+            if user:
+                user["id"] = str(user["_id"])
+                return user
+            return None
+        except Exception as e:
+            print(f"Error getting user by username: {e}")
+            return None
+
+    # --------------------------------------------------
+    # Status Synchronization
+    # --------------------------------------------------
+    def sync_overdue_commitments(self, user_oid: ObjectId):
+        """Synchronize overdue commitments based on system date/time."""
+        if self.connection_error:
+            return
+        try:
+            now = datetime.now()
+            # Find all pending commitments with deadlines for this user
+            query = {
+                "user_id": user_oid,
+                "status": "Pending",
+                "deadline": {"$ne": None}
+            }
+            pending_commits = list(self.commitments.find(query))
+
+            for commit in pending_commits:
+                deadline_dt = parse_deadline(commit.get("deadline"))
+                if deadline_dt and deadline_dt < now:
+                    self.commitments.update_one(
+                        {"_id": commit["_id"]},
+                        {"$set": {
+                            "status": "Overdue",
+                            "updated_at": now.isoformat()
+                        }}
+                    )
+        except Exception as e:
+            print(f"Error synchronizing overdue commitments: {e}")
+
+    # --------------------------------------------------
+    # Commitment operations
+    # --------------------------------------------------
+    def create_commitment(
+        self,
+        user_id: str,
+        subject: str,
+        description: str = "",
+        deadline: Optional[str] = None,
+        status: str = "Pending",
+        priority: str = "Medium",
+        priority_source: str = "ML"
+    ) -> Optional[str]:
+        """Create a new commitment document."""
+        if self.connection_error:
+            return None
+        try:
+            now = datetime.now().isoformat()
+            doc = {
+                "user_id": ObjectId(user_id),
+                "subject": subject,
+                "description": description,
+                "deadline": deadline,
+                "status": status,
+                "priority": priority,
+                "priority_source": priority_source,
+                "created_at": now,
+                "updated_at": now
+            }
+            result = self.commitments.insert_one(doc)
+            return str(result.inserted_id)
+        except Exception as e:
+            print(f"Error creating commitment: {e}")
+            return None
+
+    def get_user_commitments(
+        self,
+        user_id: str,
+        status: Optional[str] = None,
+        sort_by_priority: Optional[str] = None
+    ) -> List[Dict]:
+        """Retrieve commitments for a user, with sorting and filtering."""
+        if self.connection_error:
+            return []
+
+        try:
+            user_oid = ObjectId(user_id)
+            # Sync status automatically before querying
+            self.sync_overdue_commitments(user_oid)
+
+            query = {"user_id": user_oid}
+            if status:
+                query["status"] = status
+
+            commitments = list(self.commitments.find(query))
+
+            # Map _id to id string for frontend template compatibility
+            for commit in commitments:
+                commit["id"] = str(commit["_id"])
+
+            # Sort commitments
+            priority_map = {"High": 1, "Medium": 2, "Low": 3}
+            if sort_by_priority == "high_to_low":
+                commitments.sort(key=lambda x: (
+                    priority_map.get(x.get("priority", "Medium"), 4),
+                    x.get("deadline") or "9999-12-31T23:59:59"
+                ))
+            elif sort_by_priority == "low_to_high":
+                commitments.sort(key=lambda x: (
+                    -priority_map.get(x.get("priority", "Medium"), 4),
+                    x.get("deadline") or "9999-12-31T23:59:59"
+                ))
+            else:
+                # Default: deadline ASC, created_at DESC
+                commitments.sort(key=lambda x: x.get("created_at") or "", reverse=True)
+                commitments.sort(key=lambda x: x.get("deadline") or "9999-12-31T23:59:59")
+
+            return commitments
+        except Exception as e:
+            print(f"Error getting user commitments: {e}")
+            return []
+
+    def get_urgent_commitments(self, user_id: str, limit: int = 5) -> List[Dict]:
+        """Retrieve high-priority pending commitments whose deadline has not yet passed."""
+        if self.connection_error:
+            return []
+
+        try:
+            user_oid = ObjectId(user_id)
+            # Sync status automatically before querying
+            self.sync_overdue_commitments(user_oid)
+
+            now_iso = datetime.now().isoformat()
+            query = {
+                "user_id": user_oid,
+                "status": "Pending",
+                "priority": "High",
+                "deadline": {"$ne": None, "$gte": now_iso}
+            }
+
+            commitments = list(self.commitments.find(query).sort("deadline", ASCENDING).limit(limit))
+
+            # Map _id to id string
+            for commit in commitments:
+                commit["id"] = str(commit["_id"])
+
+            return commitments
+        except Exception as e:
+            print(f"Error getting urgent commitments: {e}")
+            return []
+
+    def update_commitment_status(self, commitment_id: str, user_id: str, status: str) -> bool:
+        """Update a commitment status if it belongs to the logged-in user."""
+        if self.connection_error:
+            return False
+
+        try:
+            result = self.commitments.update_one(
+                {"_id": ObjectId(commitment_id), "user_id": ObjectId(user_id)},
+                {"$set": {
+                    "status": status,
+                    "updated_at": datetime.now().isoformat()
+                }}
+            )
+            return result.matched_count > 0
+        except Exception as e:
+            print(f"Error updating commitment status: {e}")
+            return False
+
+    def update_commitment_priority(self, commitment_id: str, user_id: str, priority: str) -> bool:
+        """Manually override priority and set priority_source to 'Manual'."""
+        if self.connection_error:
+            return False
+
+        try:
+            result = self.commitments.update_one(
+                {"_id": ObjectId(commitment_id), "user_id": ObjectId(user_id)},
+                {"$set": {
+                    "priority": priority,
+                    "priority_source": "Manual",
+                    "updated_at": datetime.now().isoformat()
+                }}
+            )
+            return result.matched_count > 0
+        except Exception as e:
+            print(f"Error updating commitment priority: {e}")
+            return False
+
+    def update_commitment(
+        self,
+        commitment_id: str,
+        user_id: str,
+        subject: str = None,
+        description: str = None,
+        deadline: str = None,
+        status: str = None,
+        priority: str = None,
+        priority_source: str = None
+    ) -> bool:
+        """Perform generic commitment updates."""
+        if self.connection_error:
+            return False
+
+        try:
+            update_fields = {}
+            for key, val in {
+                "subject": subject,
+                "description": description,
+                "deadline": deadline,
+                "status": status,
+                "priority": priority,
+                "priority_source": priority_source
+            }.items():
+                if val is not None:
+                    update_fields[key] = val
+
+            if not update_fields:
+                return False
+
+            update_fields["updated_at"] = datetime.now().isoformat()
+
+            result = self.commitments.update_one(
+                {"_id": ObjectId(commitment_id), "user_id": ObjectId(user_id)},
+                {"$set": update_fields}
+            )
+            return result.matched_count > 0
+        except Exception as e:
+            print(f"Error updating commitment: {e}")
+            return False
+
+    def delete_commitment(self, commitment_id: str, user_id: str) -> bool:
+        """Delete a commitment if it belongs to the logged-in user."""
+        if self.connection_error:
+            return False
+
+        try:
+            result = self.commitments.delete_one(
+                {"_id": ObjectId(commitment_id), "user_id": ObjectId(user_id)}
+            )
+            return result.deleted_count > 0
+        except Exception as e:
+            print(f"Error deleting commitment: {e}")
+            return False

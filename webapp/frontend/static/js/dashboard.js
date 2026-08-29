@@ -22,8 +22,32 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // Priority is now automatically predicted by the backend
-    // No manual override needed
+    // Manual priority override buttons
+    document.querySelectorAll('.priority-override-btn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const commitmentId = this.dataset.id;
+            const newPriority = this.dataset.priority;
+            
+            try {
+                const response = await fetch(`/api/commitments/${commitmentId}/priority`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ priority: newPriority })
+                });
+                
+                if (response.ok) {
+                    location.reload();
+                } else {
+                    alert('Failed to update priority');
+                }
+            } catch (error) {
+                console.error('Priority update error:', error);
+                alert('An error occurred');
+            }
+        });
+    });
     
     // Status update buttons
     document.querySelectorAll('.status-btn').forEach(btn => {

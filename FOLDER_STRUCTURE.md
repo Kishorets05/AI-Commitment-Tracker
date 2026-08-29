@@ -152,3 +152,4 @@ The application will be available at: `http://localhost:5000`
 - All HTML templates use Jinja2 syntax for dynamic content
 - CSS uses modern features (gradients, animations, glassmorphism)
 
+

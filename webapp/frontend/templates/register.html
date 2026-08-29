@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Commitment Tracker - Sign In</title>
+    <title>Commitment Tracker - Register</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body class="login-page">
     <div class="login-container">
         <div class="login-card">
             <h1>📋 Commitment Tracker</h1>
-            <p class="subtitle">Sign in to manage your commitments</p>
+            <p class="subtitle">Create a new account to get started</p>
             
-            <form method="POST" action="/login">
+            <form method="POST" action="/register">
                 {% if error %}
                 <div class="message error">{{ error }}</div>
                 {% endif %}
@@ -20,20 +20,20 @@
                 <div class="form-group">
                     <label for="username">Name/Username</label>
                     <input type="text" id="username" name="username" required 
-                           placeholder="Enter your name or username" autofocus>
+                           placeholder="Choose a username" autofocus>
                 </div>
 
                 <div class="form-group">
                     <label for="password">Password</label>
                     <input type="password" id="password" name="password" required 
-                           placeholder="Enter your password">
+                           placeholder="Choose a password">
                 </div>
                 
-                <button type="submit" class="btn btn-primary">Sign In</button>
+                <button type="submit" class="btn btn-primary">Register</button>
             </form>
 
             <p class="auth-helper-text">
-                Don't have an account? <a href="/register" class="auth-link">Register here</a>
+                Already have an account? <a href="/login" class="auth-link">Sign In here</a>
             </p>
         </div>
     </div>

@@ -119,6 +119,11 @@
                                 <span class="priority-badge priority-{{ commit.priority.lower() }}">
                                     {{ commit.priority }} Priority
                                 </span>
+                                {% if commit.priority_source %}
+                                <span class="source-badge source-{{ commit.priority_source.lower() }}">
+                                    via {{ commit.priority_source }}
+                                </span>
+                                {% endif %}
                                 <span class="urgency-badge urgency-{{ commit.urgency.level }}">
                                     {{ commit.urgency.label }}
                                 </span>
@@ -132,6 +137,25 @@
                         <div class="commitment-meta">
                             <span><strong>Deadline:</strong> {{ commit.deadline_formatted }}</span>
                             <span><strong>Created:</strong> {{ commit.created_at[:10] }}</span>
+                        </div>
+
+                        <div class="priority-override-actions" style="margin-bottom: 15px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                            <span style="font-size: 0.85em; color: #5a6c7d; font-weight: 600;">Override Priority:</span>
+                            <button class="btn btn-outline btn-sm priority-override-btn {% if commit.priority == 'High' %}active-high{% endif %}" 
+                                    data-id="{{ commit.id }}" 
+                                    data-priority="High">
+                                High
+                            </button>
+                            <button class="btn btn-outline btn-sm priority-override-btn {% if commit.priority == 'Medium' %}active-medium{% endif %}" 
+                                    data-id="{{ commit.id }}" 
+                                    data-priority="Medium">
+                                Medium
+                            </button>
+                            <button class="btn btn-outline btn-sm priority-override-btn {% if commit.priority == 'Low' %}active-low{% endif %}" 
+                                    data-id="{{ commit.id }}" 
+                                    data-priority="Low">
+                                Low
+                            </button>
                         </div>
                         
                         <div class="commitment-actions">

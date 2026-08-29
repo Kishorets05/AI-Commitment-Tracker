@@ -2,6 +2,9 @@
 webapp/database/*.db
 webapp/database/*.sqlite
 
+# Environment variables
+.env
+
 # Python
 __pycache__/
 *.py[cod]
@@ -28,4 +31,5 @@ Thumbs.db
 # Flask
 instance/
 .webassets-cache
+
 
