@@ -189,20 +189,31 @@ def register():
 
 @app.route("/dashboard")
 def dashboard():
-    """Dashboard view with automatic status sync."""
+    """Dashboard view with search, combined filters, and analytics."""
     if "user_id" not in session:
         return redirect("/login")
 
     user_id = session["user_id"]
     username = session["username"]
 
-    status_filter = request.args.get("status", "")
-    sort_priority = request.args.get("sort", "")
+    search_query = request.args.get("search", "").strip()
+    status_filter = request.args.get("status", "").strip()
+    priority_filter = request.args.get("priority", "").strip()
+    sort_by = request.args.get("sort", "").strip()
 
-    if status_filter:
-        commitments = db.get_user_commitments(user_id, status_filter, sort_priority)
-    else:
-        commitments = db.get_user_commitments(user_id, None, sort_priority)
+    # Normalize values for query
+    db_status = status_filter if status_filter in ["Pending", "Completed", "Overdue"] else None
+    db_priority = priority_filter if priority_filter in ["High", "Medium", "Low"] else None
+    db_search = search_query if search_query else None
+
+    # Fetch filtered commitments
+    commitments = db.get_user_commitments(
+        user_id=user_id,
+        status=db_status,
+        priority=db_priority,
+        search_text=db_search,
+        sort_by=sort_by
+    )
 
     for commit in commitments:
         deadline_dt = None
@@ -229,6 +240,7 @@ def dashboard():
         if not commit.get("priority"):
             commit["priority"] = "Medium"
 
+    # Urgent popup commitments list (High priority in future)
     urgent = db.get_urgent_commitments(user_id, limit=5)
     for commit in urgent:
         if commit.get("deadline"):
@@ -240,14 +252,20 @@ def dashboard():
 
     show_urgent_modal = len(urgent) > 0 and "urgent_shown" not in session
 
+    # Fetch analytics stats via MongoDB aggregation
+    analytics = db.get_user_analytics(user_id)
+
     return render_template(
         "dashboard.html",
         username=username,
         commitments=commitments,
         urgent_commitments=urgent,
         show_urgent_modal=show_urgent_modal,
+        analytics=analytics,
+        current_search=search_query,
         current_filter=status_filter,
-        current_sort=sort_priority,
+        current_priority=priority_filter,
+        current_sort=sort_by
     )
 
 
@@ -283,6 +301,16 @@ def add_commitment():
     )
 
     return redirect("/dashboard?success=Commitment added")
+
+
+@app.route("/api/analytics", methods=["GET"])
+def get_analytics():
+    """Get structured analytics for the logged-in user."""
+    if "user_id" not in session:
+        return jsonify({"error": "Not authenticated"}), 401
+
+    analytics = db.get_user_analytics(session["user_id"])
+    return jsonify(analytics)
 
 
 @app.route("/api/commitments/<commitment_id>/status", methods=["PUT"])

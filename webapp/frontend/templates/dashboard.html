@@ -49,6 +49,105 @@
         <div class="message error">{{ request.args.get('error') }}</div>
         {% endif %}
 
+        <!-- Analytics Section -->
+        <section class="section analytics-section">
+            <h2 style="margin-bottom: 20px; font-size: 1.6em; color: #2c3e50;">📊 Analytics Summary</h2>
+            <div class="analytics-grid">
+                <div class="stat-card total">
+                    <div class="stat-value">{{ analytics.total }}</div>
+                    <div class="stat-label">Total Commitments</div>
+                </div>
+                <div class="stat-card pending">
+                    <div class="stat-value">{{ analytics.pending }}</div>
+                    <div class="stat-label">Pending</div>
+                </div>
+                <div class="stat-card completed">
+                    <div class="stat-value">{{ analytics.completed }}</div>
+                    <div class="stat-label">Completed</div>
+                </div>
+                <div class="stat-card overdue">
+                    <div class="stat-value">{{ analytics.overdue }}</div>
+                    <div class="stat-label">Overdue</div>
+                </div>
+                <div class="stat-card priority-high">
+                    <div class="stat-value">{{ analytics.high }}</div>
+                    <div class="stat-label">High Priority</div>
+                </div>
+                <div class="stat-card priority-medium">
+                    <div class="stat-value">{{ analytics.medium }}</div>
+                    <div class="stat-label">Medium Priority</div>
+                </div>
+                <div class="stat-card priority-low">
+                    <div class="stat-value">{{ analytics.low }}</div>
+                    <div class="stat-label">Low Priority</div>
+                </div>
+            </div>
+            
+            <div class="visualizations-container">
+                <div class="visual-card">
+                    <h4>Status Distribution</h4>
+                    <div class="progress-bar-group">
+                        <div class="progress-bar-label">
+                            <span>Pending</span>
+                            <span>{{ analytics.pending }} / {{ analytics.total }}</span>
+                        </div>
+                        <div class="progress-bar-bg">
+                            <div class="progress-bar-fill pending-fill" style="width: {% if analytics.total > 0 %}{{ (analytics.pending / analytics.total * 100)|int }}{% else %}0{% endif %}%;"></div>
+                        </div>
+                    </div>
+                    <div class="progress-bar-group">
+                        <div class="progress-bar-label">
+                            <span>Completed</span>
+                            <span>{{ analytics.completed }} / {{ analytics.total }}</span>
+                        </div>
+                        <div class="progress-bar-bg">
+                            <div class="progress-bar-fill completed-fill" style="width: {% if analytics.total > 0 %}{{ (analytics.completed / analytics.total * 100)|int }}{% else %}0{% endif %}%;"></div>
+                        </div>
+                    </div>
+                    <div class="progress-bar-group">
+                        <div class="progress-bar-label">
+                            <span>Overdue</span>
+                            <span>{{ analytics.overdue }} / {{ analytics.total }}</span>
+                        </div>
+                        <div class="progress-bar-bg">
+                            <div class="progress-bar-fill overdue-fill" style="width: {% if analytics.total > 0 %}{{ (analytics.overdue / analytics.total * 100)|int }}{% else %}0{% endif %}%;"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="visual-card">
+                    <h4>Priority Distribution</h4>
+                    <div class="progress-bar-group">
+                        <div class="progress-bar-label">
+                            <span>High</span>
+                            <span>{{ analytics.high }} / {{ analytics.total }}</span>
+                        </div>
+                        <div class="progress-bar-bg">
+                            <div class="progress-bar-fill high-fill" style="width: {% if analytics.total > 0 %}{{ (analytics.high / analytics.total * 100)|int }}{% else %}0{% endif %}%;"></div>
+                        </div>
+                    </div>
+                    <div class="progress-bar-group">
+                        <div class="progress-bar-label">
+                            <span>Medium</span>
+                            <span>{{ analytics.medium }} / {{ analytics.total }}</span>
+                        </div>
+                        <div class="progress-bar-bg">
+                            <div class="progress-bar-fill medium-fill" style="width: {% if analytics.total > 0 %}{{ (analytics.medium / analytics.total * 100)|int }}{% else %}0{% endif %}%;"></div>
+                        </div>
+                    </div>
+                    <div class="progress-bar-group">
+                        <div class="progress-bar-label">
+                            <span>Low</span>
+                            <span>{{ analytics.low }} / {{ analytics.total }}</span>
+                        </div>
+                        <div class="progress-bar-bg">
+                            <div class="progress-bar-fill low-fill" style="width: {% if analytics.total > 0 %}{{ (analytics.low / analytics.total * 100)|int }}{% else %}0{% endif %}%;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <!-- Add Commitment Form -->
         <section class="section">
             <h2>Add New Commitment</h2>
@@ -81,27 +180,48 @@
             </form>
         </section>
 
-        <!-- Filter and Sort Section -->
+        <!-- Filter and Search Section -->
         <section class="section">
-            <div class="filter-section">
-                <h2>My Commitments</h2>
-                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px;">
-                    <div class="filter-buttons">
-                        <a href="/dashboard{% if current_sort %}?sort={{ current_sort }}{% endif %}" class="filter-btn {% if not current_filter %}active{% endif %}">All</a>
-                        <a href="/dashboard?status=Pending{% if current_sort %}&sort={{ current_sort }}{% endif %}" class="filter-btn {% if current_filter == 'Pending' %}active{% endif %}">Pending</a>
-                        <a href="/dashboard?status=Completed{% if current_sort %}&sort={{ current_sort }}{% endif %}" class="filter-btn {% if current_filter == 'Completed' %}active{% endif %}">Completed</a>
-                        <a href="/dashboard?status=Overdue{% if current_sort %}&sort={{ current_sort }}{% endif %}" class="filter-btn {% if current_filter == 'Overdue' %}active{% endif %}">Overdue</a>
+            <h2 style="margin-bottom: 20px; font-size: 1.6em; color: #2c3e50;">🔍 Search & Advanced Filtering</h2>
+            <form method="GET" action="/dashboard" class="filter-form">
+                <div class="filter-grid">
+                    <div class="form-group search-group">
+                        <label for="search">Search Keywords</label>
+                        <input type="text" id="search" name="search" value="{{ current_search }}" placeholder="Search subject or description...">
                     </div>
-                    <div class="sort-section">
-                        <label for="sortPriority" style="margin-right: 10px; color: #5a6c7d; font-weight: 500;">Sort by Priority:</label>
-                        <select id="sortPriority" name="sort" onchange="applySort(this.value)" style="padding: 8px 12px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 0.95em; cursor: pointer;">
-                            <option value="">Default (Deadline)</option>
-                            <option value="high_to_low" {% if current_sort == 'high_to_low' %}selected{% endif %}>High to Low</option>
-                            <option value="low_to_high" {% if current_sort == 'low_to_high' %}selected{% endif %}>Low to High</option>
+                    <div class="form-group">
+                        <label for="status">Status</label>
+                        <select id="status" name="status">
+                            <option value="" {% if not current_filter %}selected{% endif %}>All Statuses</option>
+                            <option value="Pending" {% if current_filter == 'Pending' %}selected{% endif %}>Pending</option>
+                            <option value="Completed" {% if current_filter == 'Completed' %}selected{% endif %}>Completed</option>
+                            <option value="Overdue" {% if current_filter == 'Overdue' %}selected{% endif %}>Overdue</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="priority">Priority</label>
+                        <select id="priority" name="priority">
+                            <option value="" {% if not current_priority %}selected{% endif %}>All Priorities</option>
+                            <option value="High" {% if current_priority == 'High' %}selected{% endif %}>High</option>
+                            <option value="Medium" {% if current_priority == 'Medium' %}selected{% endif %}>Medium</option>
+                            <option value="Low" {% if current_priority == 'Low' %}selected{% endif %}>Low</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="sort">Sort By</label>
+                        <select id="sort" name="sort">
+                            <option value="" {% if not current_sort %}selected{% endif %}>Deadline (Nearest First)</option>
+                            <option value="deadline_desc" {% if current_sort == 'deadline_desc' %}selected{% endif %}>Deadline (Latest First)</option>
+                            <option value="priority_high_first" {% if current_sort == 'priority_high_first' %}selected{% endif %}>Priority (High First)</option>
+                            <option value="created_desc" {% if current_sort == 'created_desc' %}selected{% endif %}>Recently Created</option>
                         </select>
                     </div>
                 </div>
-            </div>
+                <div class="filter-actions">
+                    <button type="submit" class="btn btn-primary" style="width: auto;">Apply Filters</button>
+                    <a href="/dashboard" class="btn btn-secondary" style="width: auto; text-decoration: none; text-align: center; display: inline-flex; align-items: center; justify-content: center;">Clear Filters</a>
+                </div>
+            </form>
         </section>
 
         <!-- Commitments List -->
@@ -207,27 +327,6 @@
         {% if show_urgent_modal %}
         fetch('/api/mark_urgent_shown', { method: 'POST' });
         {% endif %}
-        
-        // Sort functionality
-        function applySort(sortValue) {
-            const url = new URL(window.location.href);
-            const status = url.searchParams.get('status');
-            
-            // Build new URL with sort parameter
-            let newUrl = '/dashboard';
-            const params = [];
-            if (status) {
-                params.push(`status=${status}`);
-            }
-            if (sortValue) {
-                params.push(`sort=${sortValue}`);
-            }
-            if (params.length > 0) {
-                newUrl += '?' + params.join('&');
-            }
-            
-            window.location.href = newUrl;
-        }
     </script>
 </body>
 </html>

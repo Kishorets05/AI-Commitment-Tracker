@@ -75,6 +75,7 @@ class Database:
             self.commitments.create_index([("user_id", ASCENDING)])
             self.commitments.create_index([("user_id", ASCENDING), ("deadline", ASCENDING)])
             self.commitments.create_index([("user_id", ASCENDING), ("status", ASCENDING)])
+            self.commitments.create_index([("user_id", ASCENDING), ("priority", ASCENDING)])
         except Exception as e:
             print(f"Failed to create indexes: {e}")
 
@@ -145,6 +146,73 @@ class Database:
             print(f"Error synchronizing overdue commitments: {e}")
 
     # --------------------------------------------------
+    # Analytics
+    # --------------------------------------------------
+    def get_user_analytics(self, user_id: str) -> Dict[str, int]:
+        """Calculate counts for commitments belonging to the user using aggregation."""
+        if self.connection_error:
+            return {"total": 0, "pending": 0, "completed": 0, "overdue": 0, "high": 0, "medium": 0, "low": 0}
+
+        try:
+            user_oid = ObjectId(user_id)
+            # Sync first to ensure overdue commitments are updated in database
+            self.sync_overdue_commitments(user_oid)
+
+            pipeline = [
+                {"$match": {"user_id": user_oid}},
+                {"$facet": {
+                    "by_status": [
+                        {"$group": {"_id": "$status", "count": {"$sum": 1}}}
+                    ],
+                    "by_priority": [
+                        {"$group": {"_id": "$priority", "count": {"$sum": 1}}}
+                    ],
+                    "total": [
+                        {"$count": "count"}
+                    ]
+                }}
+            ]
+
+            results = list(self.commitments.aggregate(pipeline))
+            
+            # Default values
+            counts = {
+                "total": 0,
+                "pending": 0,
+                "completed": 0,
+                "overdue": 0,
+                "high": 0,
+                "medium": 0,
+                "low": 0
+            }
+
+            if not results:
+                return counts
+
+            facet = results[0]
+            
+            # Total
+            if facet.get("total") and len(facet["total"]) > 0:
+                counts["total"] = facet["total"][0]["count"]
+
+            # Statuses
+            for item in facet.get("by_status", []):
+                status_name = item["_id"]
+                if status_name in ["Pending", "Completed", "Overdue"]:
+                    counts[status_name.lower()] = item["count"]
+
+            # Priorities
+            for item in facet.get("by_priority", []):
+                priority_name = item["_id"]
+                if priority_name in ["High", "Medium", "Low"]:
+                    counts[priority_name.lower()] = item["count"]
+
+            return counts
+        except Exception as e:
+            print(f"Error calculating analytics: {e}")
+            return {"total": 0, "pending": 0, "completed": 0, "overdue": 0, "high": 0, "medium": 0, "low": 0}
+
+    # --------------------------------------------------
     # Commitment operations
     # --------------------------------------------------
     def create_commitment(
@@ -183,9 +251,11 @@ class Database:
         self,
         user_id: str,
         status: Optional[str] = None,
-        sort_by_priority: Optional[str] = None
+        priority: Optional[str] = None,
+        search_text: Optional[str] = None,
+        sort_by: Optional[str] = None
     ) -> List[Dict]:
-        """Retrieve commitments for a user, with sorting and filtering."""
+        """Retrieve commitments for a user, with sorting, filtering, and search."""
         if self.connection_error:
             return []
 
@@ -197,6 +267,13 @@ class Database:
             query = {"user_id": user_oid}
             if status:
                 query["status"] = status
+            if priority:
+                query["priority"] = priority
+            if search_text:
+                query["$or"] = [
+                    {"subject": {"$regex": search_text, "$options": "i"}},
+                    {"description": {"$regex": search_text, "$options": "i"}}
+                ]
 
             commitments = list(self.commitments.find(query))
 
@@ -206,18 +283,21 @@ class Database:
 
             # Sort commitments
             priority_map = {"High": 1, "Medium": 2, "Low": 3}
-            if sort_by_priority == "high_to_low":
+            if sort_by == "priority_high_first":
+                # Sort by priority High (1) -> Medium (2) -> Low (3), then by deadline ASC
                 commitments.sort(key=lambda x: (
                     priority_map.get(x.get("priority", "Medium"), 4),
                     x.get("deadline") or "9999-12-31T23:59:59"
                 ))
-            elif sort_by_priority == "low_to_high":
-                commitments.sort(key=lambda x: (
-                    -priority_map.get(x.get("priority", "Medium"), 4),
-                    x.get("deadline") or "9999-12-31T23:59:59"
-                ))
+            elif sort_by == "deadline_desc":
+                # Latest deadline first (non-deadlines placed last)
+                commitments.sort(key=lambda x: x.get("created_at") or "", reverse=True)
+                commitments.sort(key=lambda x: x.get("deadline") or "", reverse=True)
+            elif sort_by == "created_desc":
+                # Recently created first
+                commitments.sort(key=lambda x: x.get("created_at") or "", reverse=True)
             else:
-                # Default: deadline ASC, created_at DESC
+                # Default: deadline_asc (nearest deadline first)
                 commitments.sort(key=lambda x: x.get("created_at") or "", reverse=True)
                 commitments.sort(key=lambda x: x.get("deadline") or "9999-12-31T23:59:59")
 
