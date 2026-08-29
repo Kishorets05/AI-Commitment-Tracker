@@ -35,11 +35,25 @@ class Database:
     def __init__(self):
         # Support fallback as requested by configuration instructions
         self.uri = os.environ.get("MONGODB_URI") or os.environ.get("MONGODB_CONNECTION_STRING")
-        self.db_name = os.environ.get("MONGODB_DB_NAME") or os.environ.get("MONGODB_DATABASE_NAME") or "AI_Commitment_Tracker"
+        self.db_name = os.environ.get("MONGODB_DB_NAME") or os.environ.get("MONGODB_DATABASE_NAME")
+
+        # Diagnostic logging (Safe, credentials masked)
+        print("=" * 50)
+        print("DATABASE INITIALIZATION DIAGNOSTICS")
+        print(f"  MONGODB_URI env var present: {self.uri is not None}")
+        print(f"  MONGODB_DB_NAME env var present: {self.db_name is not None}")
+        print("=" * 50)
 
         if not self.uri:
-            # Fallback to local default if not specified
-            self.uri = "mongodb://localhost:27017/"
+            raise RuntimeError(
+                "MONGODB_URI is not configured. "
+                "Please configure the MongoDB connection string."
+            )
+        if not self.db_name:
+            raise RuntimeError(
+                "MONGODB_DB_NAME is not configured. "
+                "Please configure the MongoDB database name."
+            )
 
         self.client = None
         self.db = None
